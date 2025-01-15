@@ -5,30 +5,31 @@ import math
 # Constants
 BG = "#000000"
 FG = "#043bad"
-CANVASHEIGHT = 768
-CANVASWIDTH = 1024
+CANVASHEIGHT = 800
+CANVASWIDTH = 1200
 NUMBOIDS = 100
 INITIALDENSITY = 0.25  # 0-1
 
 # Defaults
 BOIDHEIGHT = 20
 BOIDWIDTH = 10
-MINSPEED = 2
-MAXSPEED = 5
+MINSPEED = 10
+MAXSPEED = 15
 
-INNERRANGE = 75
-OUTERRANGE = 250
-SHOWINNER = 1
-SHOWOUTER = 1
+INNERRANGE = 25
+OUTERRANGE = 50
+SHOWINNER = 0
+SHOWOUTER = 0
 
-AVOIDANCE = 0.3  # 0-1
+AVOIDANCE = 0.2  # 0-1
 ALIGNMENT = 0.3  # 0-1
 CENTERING = 0.1  # 0-1
 
 EDGEMARGIN = 50
-TURNSPEED = 5  # 0-1
+TURNSTRENGTH = 1
+SHOWEDGE = 0
 
-DELAY = 50
+DELAY = 25
 
 
 class Settings:
@@ -148,23 +149,24 @@ class Settings:
         )
         self.centering.grid(row=4, column=1)
 
-        turnSpeed = tk.IntVar(value=TURNSPEED)
-        self.turnSpeed = tk.Scale(
+        turnStrength = tk.DoubleVar(value=TURNSTRENGTH)
+        self.turnStrength = tk.Scale(
             root,
-            from_=2,
-            to=25,
+            from_=0,
+            to=2,
             orient="horizontal",
-            variable=turnSpeed,
-            label="TurnSpeed",
+            variable=turnStrength,
+            label="Turn Strength",
             length=sliderLength,
+            resolution=0.1
         )
-        self.turnSpeed.grid(row=4, column=2)
+        self.turnStrength.grid(row=4, column=2)
 
         edgeMargin = tk.IntVar(value=EDGEMARGIN)
         self.edgeMargin = tk.Scale(
             root,
             from_=0,
-            to=100,
+            to=min(CANVASWIDTH, CANVASHEIGHT) / 2,
             orient="horizontal",
             variable=edgeMargin,
             label="Edge Margin",
@@ -192,7 +194,7 @@ class Settings:
             onvalue=1,
             offvalue=0,
         )
-        showInner.grid(row=6, column=1)
+        showInner.grid(row=6, column=1, columnspan=2)
 
         self.showOuter = tk.IntVar(value=SHOWOUTER)
         showOuter = tk.Checkbutton(
@@ -202,17 +204,48 @@ class Settings:
             onvalue=1,
             offvalue=0,
         )
-        showOuter.grid(row=7, column=1)
+        showOuter.grid(row=7, column=1, columnspan=2)
+
+        self.showEdge = tk.IntVar(value=SHOWEDGE)
+        showEdge = tk.Checkbutton(
+            root, text="Show edge", variable=self.showEdge, onvalue=1, offvalue=0
+        )
+        showEdge.grid(row=8, column=1, columnspan=2)
 
         resetSettingsButton = tk.Button(
             root, text="Reset settings", command=lambda: resetSettings(self)
         )
-        resetSettingsButton.grid(row=8, column=1, columnspan=2)
+        resetSettingsButton.grid(row=9, column=1, columnspan=2)
 
         resetSimButton = tk.Button(
-            root, text="Reset simulation", command=lambda: resetBoids(boids)
+            root, text="Reset simulation", command=lambda: resetBoids(boids, self)
         )
-        resetSimButton.grid(row=9, column=1, columnspan=2)
+        resetSimButton.grid(row=10, column=1, columnspan=2)
+
+        numBoids = tk.IntVar(value=NUMBOIDS)
+        self.numBoids = tk.Scale(
+            root,
+            from_=1,
+            to=500,
+            orient="horizontal",
+            variable=numBoids,
+            label="Number of boids",
+            length=sliderLength,
+        )
+        self.numBoids.grid(row=11, column=1)
+
+        density = tk.DoubleVar(value=INITIALDENSITY)
+        self.density = tk.Scale(
+            root,
+            from_=0,
+            to=1,
+            orient="horizontal",
+            variable=density,
+            label="Initial Density",
+            length=sliderLength,
+            resolution=0.05,
+        )
+        self.density.grid(row=11, column=2)
 
 
 class Boid:
@@ -280,21 +313,35 @@ class Boid:
             fill=self.color,
             tags="gen" + str(gen),
         )
+        if settings.showEdge.get() == 1:
+            canvas.create_polygon(
+                settings.edgeMargin.get(),
+                settings.edgeMargin.get(),
+                CANVASWIDTH - settings.edgeMargin.get(),
+                settings.edgeMargin.get(),
+                CANVASWIDTH - settings.edgeMargin.get(),
+                CANVASHEIGHT - settings.edgeMargin.get(),
+                settings.edgeMargin.get(),
+                CANVASHEIGHT - settings.edgeMargin.get(),
+                outline="gray",
+                fill="",
+                tags="gen" + str(gen),
+            )
         if settings.showInner.get() == 1:
             canvas.create_oval(
-                self.x - settings.innerRange.get() / 2,
-                self.y - settings.innerRange.get() / 2,
-                self.x + settings.innerRange.get() / 2,
-                self.y + settings.innerRange.get() / 2,
+                self.x - settings.innerRange.get(),
+                self.y - settings.innerRange.get(),
+                self.x + settings.innerRange.get(),
+                self.y + settings.innerRange.get(),
                 outline="red",
                 tags="gen" + str(gen),
             )
         if settings.showOuter.get() == 1:
             canvas.create_oval(
-                self.x - settings.outerRange.get() / 2,
-                self.y - settings.outerRange.get() / 2,
-                self.x + settings.outerRange.get() / 2,
-                self.y + settings.outerRange.get() / 2,
+                self.x - settings.outerRange.get(),
+                self.y - settings.outerRange.get(),
+                self.x + settings.outerRange.get(),
+                self.y + settings.outerRange.get(),
                 outline="green",
                 tags="gen" + str(gen),
             )
@@ -319,55 +366,73 @@ class Boid:
             avg_vy /= visible_boids
             avg_x /= visible_boids
             avg_y /= visible_boids
-        self.vx += (
+
+        dvx = (
             inner_dx * settings.avoidance.get()
             + (avg_vx - self.vx) * settings.alignment.get()
-            + (avg_x - self.x) * settings.centering.get()
+            if visible_boids > 0
+            else (
+                0 + (avg_x - self.x) * settings.centering.get()
+                if visible_boids > 0
+                else 0
+            )
         )
-        self.vy += (
+        dvy = (
             inner_dy * settings.avoidance.get()
             + (avg_vy - self.vy) * settings.alignment.get()
-            + (avg_y - self.y) * settings.centering.get()
+            if visible_boids > 0
+            else (
+                0 + (avg_y - self.y) * settings.centering.get()
+                if visible_boids > 0
+                else 0
+            )
         )
+
+        self.vx += dvx
+        self.vy += dvy
 
         if self.x < settings.edgeMargin.get():
-            self.vx += settings.turnSpeed.get() * (
-                (settings.edgeMargin.get() - self.x) / settings.edgeMargin.get()
+            self.vx += (
+                settings.turnStrength.get()
+                * ((settings.edgeMargin.get() - self.x) / settings.edgeMargin.get())
+                * settings.maxSpeed.get()
             )
         elif self.x > CANVASWIDTH - settings.edgeMargin.get():
-            self.vx -= settings.turnSpeed.get() * (
-                (settings.edgeMargin.get() - (self.x - CANVASWIDTH))
-                / settings.edgeMargin.get()
-            )
-        if self.y < settings.edgeMargin.get():
-            self.vy += settings.turnSpeed.get() * (
-                (settings.edgeMargin.get() - self.y) / settings.edgeMargin.get()
-            )
-        elif self.y > CANVASWIDTH - settings.edgeMargin.get():
-            self.vy -= settings.turnSpeed.get() * (
-                (settings.edgeMargin.get() - (self.y - CANVASHEIGHT))
-                / settings.edgeMargin.get()
+            self.vx -= (
+                settings.turnStrength.get()
+                * (
+                    (self.x - (CANVASWIDTH - settings.edgeMargin.get()))
+                    / settings.edgeMargin.get()
+                )
+                * settings.maxSpeed.get()
             )
 
-        self.vx = (
-            clamp(settings.minSpeed.get(), self.vx, settings.maxSpeed.get())
-            if self.vx > 0
-            else clamp(
-                -1 * settings.minSpeed.get(), self.vx, -1 * settings.maxSpeed.get()
+        if self.y < settings.edgeMargin.get():
+            self.vy += (
+                settings.turnStrength.get()
+                * ((settings.edgeMargin.get() - self.y) / settings.edgeMargin.get())
+                * settings.maxSpeed.get()
             )
-        )
-        self.vy = (
-            clamp(settings.minSpeed.get(), self.vy, settings.maxSpeed.get())
-            if self.vy > 0
-            else clamp(
-                -1 * settings.minSpeed.get(), self.vy, -1 * settings.maxSpeed.get()
+        elif self.y > CANVASHEIGHT - settings.edgeMargin.get():
+            self.vy -= (
+                settings.turnStrength.get()
+                * (
+                    (self.y - (CANVASHEIGHT - settings.edgeMargin.get()))
+                    / settings.edgeMargin.get()
+                )
+                * settings.maxSpeed.get()
             )
-        )
+
+        speed = math.sqrt(self.vx**2 + self.vy**2)
+        adjusted_speed = clamp(settings.minSpeed.get(), speed, settings.maxSpeed.get())
+
+        self.vx *= adjusted_speed / speed
+        self.vy *= adjusted_speed / speed
 
         self.x += self.vx
         self.y += self.vy
         self.x = clamp(0, self.x, CANVASWIDTH)
-        self.y = clamp(0, self.y, CANVASWIDTH)
+        self.y = clamp(0, self.y, CANVASHEIGHT)
 
     def distTo(self, other: "Boid") -> float:
         return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
@@ -383,25 +448,31 @@ def resetSettings(settings: Settings):
     settings.avoidance.set(AVOIDANCE)
     settings.alignment.set(ALIGNMENT)
     settings.centering.set(CENTERING)
-    settings.turnSpeed.set(TURNSPEED)
+    settings.turnStrength.set(TURNSTRENGTH)
     settings.edgeMargin.set(EDGEMARGIN)
     settings.delay.set(DELAY)
+    settings.numBoids.set(NUMBOIDS)
+    settings.density.set(INITIALDENSITY)
 
 
-def resetBoids(boids: list["Boid"]):
+def resetBoids(boids: list["Boid"], settings: Settings):
     cx = CANVASWIDTH / 2
     cy = CANVASHEIGHT / 2
-    for boid in boids:
-        boid.x = random.randint(
-            int(cx - (CANVASWIDTH * 0.5 * (1 - INITIALDENSITY))),
-            int(cx + (CANVASWIDTH * 0.5 * (1 - INITIALDENSITY))),
+    boids.clear()
+    for _ in range(settings.numBoids.get()):
+        x = random.randint(
+            int(cx - (CANVASWIDTH * 0.5 * (1 - settings.density.get()))),
+            int(cx + (CANVASWIDTH * 0.5 * (1 - settings.density.get()))),
         )
-        boid.y = random.randint(
-            int(cy - (CANVASHEIGHT * 0.5 * (1 - INITIALDENSITY))),
-            int(cy + (CANVASHEIGHT * 0.5 * (1 - INITIALDENSITY))),
+        y = random.randint(
+            int(cy - (CANVASHEIGHT * 0.5 * (1 - settings.density.get()))),
+            int(cy + (CANVASHEIGHT * 0.5 * (1 - settings.density.get()))),
         )
-        boid.vx = random.randint(MINSPEED, MAXSPEED) * random.choice((-1, 1))
-        boid.vy = random.randint(MINSPEED, MAXSPEED) * random.choice((-1, 1))
+        speed = random.randint(settings.minSpeed.get(), settings.maxSpeed.get())
+        direction = random.randint(0, 359)
+        vx = speed * math.cos(direction * math.pi / 180)
+        vy = speed * math.sin(direction * math.pi / 180)
+        boids.append(Boid(x, y, vx, vy))
 
 
 def clamp(minVal, val, maxVal):
@@ -423,8 +494,10 @@ def createBoids() -> list[Boid]:
             int(cy - (CANVASHEIGHT * 0.5 * (1 - INITIALDENSITY))),
             int(cy + (CANVASHEIGHT * 0.5 * (1 - INITIALDENSITY))),
         )
-        vx = random.randint(MINSPEED, MAXSPEED) * random.choice((-1, 1))
-        vy = random.randint(MINSPEED, MAXSPEED) * random.choice((-1, 1))
+        speed = random.randint(MINSPEED, MAXSPEED)
+        direction = random.randint(0, 359)
+        vx = speed * math.cos(direction * math.pi / 180)
+        vy = speed * math.sin(direction * math.pi / 180)
         boids.append(Boid(x, y, vx, vy))
     return boids
 
@@ -435,17 +508,20 @@ def main():
     canvas = tk.Canvas(root, bg=BG, height=CANVASHEIGHT, width=CANVASWIDTH, bd=0)
     boids = createBoids()
     settings = Settings(root, boids)
-    canvas.grid(row=0, column=0, rowspan=11)
+    canvas.grid(row=0, column=0, rowspan=12)
     gen = 0
     while True:
-        for boid in boids:
-            boid.update(boids, settings)
-            boid.draw(canvas, gen, settings)
-        canvas.delete("gen" + str(gen - 1))
-        gen += 1
-        root.after(int(settings.delay.get()), func=None)
-        root.update()
-    canvas.mainloop()
+        try:
+            for boid in boids:
+                boid.update(boids, settings)
+                boid.draw(canvas, gen, settings)
+            canvas.delete("gen" + str(gen - 1))
+            gen += 1
+            root.after(int(settings.delay.get()))
+            root.update()
+        except tk.TclError:
+            print("Hopefully this means the program exited normally")
+            break
 
 
 if __name__ == "__main__":
