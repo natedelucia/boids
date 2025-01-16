@@ -118,7 +118,7 @@ class Settings:
             orient="horizontal",
             variable=avoidance,
             label="Avoidance",
-            resolution=0.1,
+            resolution=0.05,
             length=sliderLength,
         )
         self.avoidance.grid(row=3, column=1)
@@ -131,7 +131,7 @@ class Settings:
             orient="horizontal",
             variable=alignment,
             label="Alignment",
-            resolution=0.1,
+            resolution=0.05,
             length=sliderLength,
         )
         self.alignment.grid(row=3, column=2)
@@ -144,7 +144,7 @@ class Settings:
             orient="horizontal",
             variable=centering,
             label="Centering",
-            resolution=0.1,
+            resolution=0.05,
             length=sliderLength,
         )
         self.centering.grid(row=4, column=1)
@@ -158,7 +158,7 @@ class Settings:
             variable=turnStrength,
             label="Turn Strength",
             length=sliderLength,
-            resolution=0.1
+            resolution=0.05,
         )
         self.turnStrength.grid(row=4, column=2)
 
@@ -171,18 +171,20 @@ class Settings:
             variable=edgeMargin,
             label="Edge Margin",
             length=sliderLength,
+            resolution=5,
         )
         self.edgeMargin.grid(row=5, column=1)
 
         delay = tk.IntVar(value=DELAY)
         self.delay = tk.Scale(
             root,
-            from_=1,
+            from_=0,
             to=500,
             orient="horizontal",
             variable=delay,
             label="Update Delay",
             length=sliderLength,
+            resolution=5,
         )
         self.delay.grid(row=5, column=2)
 
@@ -225,12 +227,13 @@ class Settings:
         numBoids = tk.IntVar(value=NUMBOIDS)
         self.numBoids = tk.Scale(
             root,
-            from_=1,
+            from_=10,
             to=500,
             orient="horizontal",
             variable=numBoids,
             label="Number of boids",
             length=sliderLength,
+            resolution=10,
         )
         self.numBoids.grid(row=11, column=1)
 
